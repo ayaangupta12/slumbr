@@ -477,178 +477,49 @@ a{color:inherit}
 </div>
 
 <script>
-/* waitlist form — needs to be global for the inline onsubmit handlers */
-function join(e){
-  e.preventDefault();
-  var form=e.currentTarget;
-  var input=form.querySelector('input[type=email]');
-  var email=input?input.value.trim():'';
-  if(!email)return;
-  try{localStorage.setItem('slumbr_waitlist_email',email);}catch(err){}
-  var box=form.parentElement.querySelector('.success');
-  if(box)box.classList.add('show');
-  if(input)input.value='';
-  var btn=form.querySelector('button');
-  if(btn)btn.textContent="You're in";
+async function join(event) {
+  event.preventDefault();
+
+  const form = event.currentTarget || event.target;
+  const input = form.querySelector('input[type="email"]');
+  const button = form.querySelector('button');
+  const status = form.parentElement.querySelector(".success");
+
+  const email = input.value.trim();
+  if (!email || !input.checkValidity()) { input.reportValidity(); return; }
+
+  const originalButtonText = button.textContent;
+  const originalStatusText = status ? status.textContent : "";
+
+  button.disabled = true;
+  button.textContent = "Joining…";
+  if (status) { status.classList.remove("show"); status.textContent = originalStatusText; }
+
+  try {
+    const response = await fetch("/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ email })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "Signup failed");
+
+    input.value = "";
+    button.textContent = "You're in";
+    if (status) {
+      status.textContent = "you're on the list. we'll let you know when slumbr drops.";
+      status.classList.add("show");
+    }
+  } catch (err) {
+    console.error("Waitlist error:", err);
+    button.disabled = false;
+    button.textContent = originalButtonText;
+    if (status) {
+      status.textContent = "hmm, that didn't work — please try again.";
+      status.classList.add("show");
+    }
+  }
 }
-
-(function(){
-  var root=document.documentElement;
-  root.classList.add('js');
-  var noMotion=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if(noMotion)root.classList.add('no-motion');
-
-  /* ----- fluid canvas starfield: drifting stars + shooting stars everywhere ----- */
-  var skyCanvas=document.getElementById('skyCanvas');
-  if(skyCanvas&&skyCanvas.getContext){
-    var sctx=skyCanvas.getContext('2d');
-    var base=skyCanvas.parentNode;
-    var W=0,H=0,stars=[],shooters=[],maxShoot=5,nextSpawn=0;
-    var scolor=['235,228,255','223,209,255','194,173,255','255,255,255','255,255,255'];
-
-    function resizeSky(){
-      var dpr=Math.min(window.devicePixelRatio||1,2);
-      W=base.clientWidth;H=base.clientHeight;
-      skyCanvas.width=Math.round(W*dpr);skyCanvas.height=Math.round(H*dpr);
-      skyCanvas.style.width=W+'px';skyCanvas.style.height=H+'px';
-      sctx.setTransform(dpr,0,0,dpr,0,0);
-      maxShoot=W<768?3:6;
-      var count=Math.round(Math.max(140,Math.min(460,W*H/7500)));
-      stars=[];
-      for(var i=0;i<count;i++){
-        var depth=Math.random();
-        stars.push({
-          x:Math.random()*W,y:Math.random()*H,
-          r:0.5+depth*1.7,
-          c:scolor[(Math.random()*scolor.length)|0],
-          sp:0.07+depth*0.55,
-          dir:Math.random()<0.5?-1:1,
-          tw:1+Math.random()*3,
-          ph:Math.random()*Math.PI*2
-        });
-      }
-    }
-    function drawStars(t){
-      for(var i=0;i<stars.length;i++){
-        var st=stars[i];
-        if(t!==null){
-          st.y+=st.sp;st.x+=st.sp*0.4*st.dir;
-          if(st.y>H+2){st.y=-2;st.x=Math.random()*W;}
-          if(st.x>W+2)st.x=-2;else if(st.x<-2)st.x=W+2;
-        }
-        var a=t===null?0.55:(0.3+0.7*Math.pow((Math.sin(t*st.tw+st.ph)+1)/2,2))*(0.45+0.55*depthOf(st));
-        sctx.globalAlpha=Math.max(.04,Math.min(1,a));
-        sctx.fillStyle='rgb('+st.c+')';
-        sctx.beginPath();sctx.arc(st.x,st.y,st.r,0,6.2832);sctx.fill();
-      }
-      sctx.globalAlpha=1;
-    }
-    function depthOf(st){return (st.r-0.5)/1.7;}
-    function spawnShooter(){
-      var sh={};
-      sh.x=Math.random()*W;
-      sh.y=Math.random()<0.75?Math.random()*H*0.55:Math.random()*H*0.6;
-      var a=Math.PI*(0.2+Math.random()*0.6);
-      var sp=6+Math.random()*8;
-      sh.vx=Math.cos(a)*sp;
-      sh.vy=Math.sin(a)*sp;
-      sh.sp=sp;
-      sh.len=60+Math.random()*130;
-      sh.w=1+Math.random()*1.6;
-      sh.life=0;
-      sh.maxLife=90+Math.random()*70;
-      sh.c=scolor[(Math.random()*scolor.length)|0];
-      shooters.push(sh);
-    }
-    function drawShooter(sh){
-      var f=Math.max(0,1-sh.life/sh.maxLife);
-      var ux=sh.vx/sh.sp,uy=sh.vy/sh.sp;
-      var tx=sh.x-ux*sh.len,ty=sh.y-uy*sh.len;
-      var g=sctx.createLinearGradient(tx,ty,sh.x,sh.y);
-      g.addColorStop(0,'rgba('+sh.c+',0)');
-      g.addColorStop(0.7,'rgba('+sh.c+','+(0.35*f).toFixed(3)+')');
-      g.addColorStop(1,'rgba(255,255,255,'+(0.95*f).toFixed(3)+')');
-      sctx.strokeStyle=g;sctx.lineWidth=sh.w;sctx.lineCap='round';
-      sctx.beginPath();sctx.moveTo(tx,ty);sctx.lineTo(sh.x,sh.y);sctx.stroke();
-      sctx.globalAlpha=Math.max(0,f);
-      sctx.fillStyle='#ffffff';
-      sctx.beginPath();sctx.arc(sh.x,sh.y,sh.w*1.7,0,6.2832);sctx.fill();
-      sctx.globalAlpha=1;
-    }
-    function tick(now){
-      var t=noMotion?null:now/1000;
-      sctx.clearRect(0,0,W,H);
-      drawStars(t);
-      if(!noMotion){
-        if(now>=nextSpawn&&shooters.length<maxShoot){spawnShooter();nextSpawn=now+280+Math.random()*820;}
-        for(var i=shooters.length-1;i>=0;i--){
-          var sh=shooters[i];
-          sh.life+=1;
-          if(sh.life>sh.maxLife||sh.x<-220||sh.x>W+220||sh.y>H+220||sh.y<-220){shooters.splice(i,1);continue;}
-          sh.x+=sh.vx;sh.y+=sh.vy;
-          drawShooter(sh);
-        }
-        requestAnimationFrame(tick);
-      }
-    }
-    resizeSky();
-    window.addEventListener('resize',resizeSky,{passive:true});
-    if(noMotion){drawStars(null);}else{nextSpawn=0;requestAnimationFrame(tick);}
-
-    /* sky gently shifts opposite the cursor */
-    var sky=document.querySelector('.sky');
-    if(sky&&!noMotion){
-      window.addEventListener('pointermove',function(e){
-        var nx=e.clientX/window.innerWidth-0.5;
-        var ny=e.clientY/window.innerHeight-0.5;
-        sky.style.setProperty('--mx',(-nx*16).toFixed(2));
-        sky.style.setProperty('--my',(-ny*12).toFixed(2));
-      },{passive:true});
-    }
-  }
-
-  /* ----- 3D phone tilt + chip/spark parallax ----- */
-  var scene=document.querySelector('.scene');
-  var phone=document.querySelector('.phone3d');
-  if(scene&&phone&&!noMotion){
-    var movers=[].slice.call(document.querySelectorAll('.chip,.spark'));
-    var glare=document.querySelector('.glare');
-    var tiltAmt=parseFloat(phone.getAttribute('data-tilt')||8);
-    scene.addEventListener('pointermove',function(e){
-      var r=scene.getBoundingClientRect();
-      var nx=(e.clientX-r.left)/r.width-0.5;
-      var ny=(e.clientY-r.top)/r.height-0.5;
-      phone.style.transform='rotateX('+(-ny*tiltAmt).toFixed(2)+'deg) rotateY('+(nx*tiltAmt).toFixed(2)+'deg)';
-      phone.classList.add('is-hover');
-      if(glare){
-        glare.style.setProperty('--gx',((nx+0.5)*100).toFixed(1)+'%');
-        glare.style.setProperty('--gy',((ny+0.5)*100).toFixed(1)+'%');
-      }
-      for(var i=0;i<movers.length;i++){
-        var d=parseFloat(movers[i].getAttribute('data-depth'))||60;
-        movers[i].style.transform='translate3d('+(-nx*d*0.9).toFixed(1)+'px,'+(-ny*d*0.9).toFixed(1)+'px,'+d+'px)';
-      }
-    });
-    scene.addEventListener('pointerleave',function(){
-      phone.classList.remove('is-hover');
-      phone.style.transform='';
-      for(var i=0;i<movers.length;i++)movers[i].style.transform='';
-    });
-  }
-
-  /* ----- scroll reveals ----- */
-  var revealEls=[].slice.call(document.querySelectorAll('[data-reveal]'));
-  if('IntersectionObserver' in window&&!noMotion){
-    var io=new IntersectionObserver(function(entries){
-      entries.forEach(function(en){
-        if(en.isIntersecting){en.target.classList.add('in');io.unobserve(en.target);}
-      });
-    },{threshold:.15});
-    revealEls.forEach(function(el){io.observe(el);});
-  }else{
-    revealEls.forEach(function(el){el.classList.add('in');});
-  }
-})();
 </script>
 </body>
 </html>
